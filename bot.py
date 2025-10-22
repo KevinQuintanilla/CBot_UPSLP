@@ -2,7 +2,15 @@ import os
 import sqlite3
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
-from flask import Flask, request
+from flask import Flask, request, jsonify
+import logging
+
+# Configurar logging
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
 # Configuración
 TOKEN = os.environ.get('BOT_TOKEN', '8437171681:AAH3K_6vtwrF2E4w6Fcek1iwPJwPp-ubi94')
@@ -709,12 +717,12 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    print(f"Error: {context.error}")
+    logger.error(f"Error: {context.error}")
     try:
         if update and update.message:
             await update.message.reply_text("⚠️ Error. Escribe 'menu' para volver", reply_markup=main_keyboard())
     except Exception as e:
-        print(f"Error en error_handler: {e}")
+        logger.error(f"Error en error_handler: {e}")
 
 # --- CONFIGURACIÓN WEBHOOK PARA RENDER ---
 def setup_application():
@@ -739,7 +747,68 @@ def setup_application():
     
     return application
 
+# Crear aplicación de Telegram
+application = setup_application()
+
+# Crear aplicación Flask
+flask_app = Flask(__name__)
+
+@flask_app.route('/')
+def home():
+    return jsonify({
+        'status': 'live', 
+        'service': 'UPSLP Academic Bot',
+        'webhook_url': f'{WEBAPP_URL}/webhook'
+    })
+
+@flask_app.route('/webhook', methods=['POST'])
+def webhook():
+    """Endpoint para recibir updates de Telegram"""
+    try:
+        update = Update.de_json(request.get_json(), application.bot)
+        application.update_queue.put(update)
+        return 'ok'
+    except Exception as e:
+        logger.error(f"Error en webhook: {e}")
+        return 'error', 400
+
+@flask_app.route('/set-webhook')
+def set_webhook():
+    """Configurar webhook manualmente"""
+    try:
+        webhook_url = f"{WEBAPP_URL}/webhook"
+        result = application.bot.set_webhook(
+            url=webhook_url,
+            drop_pending_updates=True
+        )
+        return jsonify({
+            'status': 'success',
+            'webhook_url': webhook_url,
+            'result': result
+        })
+    except Exception as e:
+        logger.error(f"Error configurando webhook: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@flask_app.route('/webhook-info')
+def webhook_info():
+    """Obtener información del webhook"""
+    try:
+        info = application.bot.get_webhook_info()
+        return jsonify({
+            'url': info.url,
+            'has_custom_certificate': info.has_custom_certificate,
+            'pending_update_count': info.pending_update_count,
+            'last_error_date': info.last_error_date,
+            'last_error_message': info.last_error_message,
+            'max_connections': info.max_connections,
+            'allowed_updates': info.allowed_updates
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 def main():
+    """Función principal para ejecutar en local"""
     print("🚀 Iniciando Bot Académico UPSLP...")
     
     # Verificar token
@@ -749,38 +818,11 @@ def main():
     
     print(f"✅ Token cargado: {TOKEN[:10]}...")
     
-    # Configurar aplicación
-    application = setup_application()
-    
-    # SIEMPRE usar webhook en Render
-    port = int(os.environ.get('PORT', 5000))
-    
-    print("🌐 Configurando Webhook...")
-    
-    # Crear servidor Flask
-    flask_app = Flask(__name__)
-    
-    @flask_app.route('/')
-    def index():
-        return "🤖 Bot Académico UPSLP está funcionando correctamente!"
-    
-    @flask_app.route('/webhook', methods=['POST'])
-    def webhook():
-        """Endpoint para recibir updates de Telegram"""
-        try:
-            update = Update.de_json(request.get_json(), application.bot)
-            application.update_queue.put(update)
-            return 'ok'
-        except Exception as e:
-            print(f"❌ Error en webhook: {e}")
-            return 'error', 400
-    
-    # Configurar webhook MANUALMENTE
+    # Configurar webhook automáticamente
     webhook_url = f"{WEBAPP_URL}/webhook"
     print(f"🔗 Configurando webhook: {webhook_url}")
     
     try:
-        # Esto configura el webhook inmediatamente
         application.bot.set_webhook(
             url=webhook_url,
             drop_pending_updates=True
@@ -793,6 +835,7 @@ def main():
     print("🔧 Iniciando servidor Flask...")
     
     # Iniciar servidor Flask
+    port = int(os.environ.get('PORT', 10000))
     flask_app.run(host='0.0.0.0', port=port, debug=False)
 
 if __name__ == '__main__':
