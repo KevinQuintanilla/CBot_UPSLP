@@ -13,8 +13,14 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Configuración
-TOKEN = os.environ.get('BOT_TOKEN', '8437171681:AAH3K_6vtwrF2E4w6Fcek1iwPJwPp-ubi94')
+TOKEN = os.environ.get('BOT_TOKEN')
 WEBAPP_URL = "https://cbot-upslp.onrender.com"
+
+# NO configurar el webhook aquí, solo verificar el token
+if not TOKEN:
+    logger.error("❌ ERROR: BOT_TOKEN no encontrado")
+    # Para desarrollo local puedes usar un token temporal
+    TOKEN = "8437171681:AAH3K_6vtwrF2E4w6Fcek1iwPJwPp-ubi94"
 
 # Estados de conversación
 (
@@ -808,35 +814,48 @@ def webhook_info():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 def main():
-    """Función principal para ejecutar en local"""
-    print("🚀 Iniciando Bot Académico UPSLP...")
+    """Función principal - SOLO para desarrollo local"""
+    print("🚀 Iniciando Bot Académico UPSLP (MODO LOCAL)...")
     
-    # Verificar token
     if not TOKEN:
         print("❌ ERROR: BOT_TOKEN no encontrado")
         return
     
     print(f"✅ Token cargado: {TOKEN[:10]}...")
     
-    # Configurar webhook automáticamente
-    webhook_url = f"{WEBAPP_URL}/webhook"
-    print(f"🔗 Configurando webhook: {webhook_url}")
-    
+    # SOLO para desarrollo local usar polling
+    print("🔧 Iniciando en modo polling (solo para desarrollo local)...")
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
+
+# Configuración para Render - esto se ejecuta al importar el módulo
+def setup_webhook():
+    """Configurar webhook solo cuando el servicio esté corriendo en Render"""
     try:
+        # Pequeña espera para asegurar que el servicio esté listo
+        time.sleep(2)
+        
+        webhook_url = f"{WEBAPP_URL}/webhook"
+        logger.info(f"🔗 Configurando webhook: {webhook_url}")
+        
         application.bot.set_webhook(
             url=webhook_url,
-            drop_pending_updates=True
+            drop_pending_updates=True,
+            allowed_updates=Update.ALL_TYPES
         )
-        print("✅ Webhook configurado exitosamente!")
+        logger.info("✅ Webhook configurado exitosamente!")
+        
     except Exception as e:
-        print(f"❌ Error configurando webhook: {e}")
-        return
-    
-    print("🔧 Iniciando servidor Flask...")
-    
-    # Iniciar servidor Flask
-    port = int(os.environ.get('PORT', 10000))
-    flask_app.run(host='0.0.0.0', port=port, debug=False)
+        logger.error(f"❌ Error configurando webhook: {e}")
+
+# Configurar webhook automáticamente al iniciar en Render
+if os.environ.get('RENDER', False) or os.environ.get('PORT'):
+    logger.info("🌐 Entorno Render detectado, configurando webhook...")
+    # Usar un pequeño retraso para asegurar que el servicio esté listo
+    import threading
+    thread = threading.Timer(5.0, setup_webhook)
+    thread.daemon = True
+    thread.start()
 
 if __name__ == '__main__':
+    # Esto solo se ejecutará en desarrollo local
     main()
