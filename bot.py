@@ -711,7 +711,12 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print(f"Error: {context.error}")
-    await update.message.reply_text("⚠️ Error. Escribe 'menu' para volver", reply_markup=main_keyboard())
+    try:
+        if update and update.message:
+            await update.message.reply_text("⚠️ Error. Escribe 'menu' para volver", reply_markup=main_keyboard())
+    except Exception as e:
+        print(f"Error en error_handler: {e}")
+
 
 def main():
     print("🚀 Iniciando Bot Académico UPSLP...")
