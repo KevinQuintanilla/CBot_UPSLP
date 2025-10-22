@@ -3,6 +3,7 @@ import sqlite3
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
 from dotenv import load_dotenv
+from flask import Flask, request
 
 # Cargar variables de entorno
 load_dotenv()
@@ -569,7 +570,6 @@ async def iniciar_eliminacion(update: Update, context: ContextTypes.DEFAULT_TYPE
     for id, semestre, nombre, _, _, _, _ in materias:
         keyboard.append([f"Eliminar: {nombre} (S{semestre})"])
         materias_dict[f"Eliminar: {nombre} (S{semestre})"] = id
-    
     keyboard.append(["🔙 Menú Principal"])
     
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -717,11 +717,10 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         print(f"Error en error_handler: {e}")
 
-
-def main():
-    print("🚀 Iniciando Bot Académico UPSLP...")
-    
-    app = Application.builder().token(TOKEN).build()
+# --- CONFIGURACIÓN WEBHOOK PARA RENDER ---
+def setup_application():
+    """Configurar la aplicación de Telegram"""
+    application = Application.builder().token(TOKEN).build()
     
     # Conversación principal
     conv_handler = ConversationHandler(
@@ -736,16 +735,64 @@ def main():
         fallbacks=[CommandHandler('cancel', cancel)]
     )
     
-    app.add_handler(conv_handler)
-    app.add_error_handler(error_handler)
+    application.add_handler(conv_handler)
+    application.add_error_handler(error_handler)
     
-    print("✅ Bot académico UPSLP iniciado correctamente!")
+    return application
+
+def main():
+    print("🚀 Iniciando Bot Académico UPSLP...")
     
-    # Configuración para Render - con manejo de conflicto
-    app.run_polling(
-        drop_pending_updates=True,
-        allowed_updates=['message', 'callback_query']
-    )
+    # Verificar token
+    if not TOKEN:
+        print("❌ ERROR: BOT_TOKEN no encontrado")
+        return
+    
+    # Configurar aplicación
+    application = setup_application()
+    
+    # Verificar si estamos en Render
+    port = int(os.environ.get('PORT', 5000))
+    render_app_name = os.environ.get('RENDER_APP_NAME', 'CBot_LIPSLP')
+    
+    if render_app_name:
+        print("🌐 Modo: Webhook (Render)")
+        
+        # Crear servidor Flask para webhook
+        flask_app = Flask(__name__)
+        
+        @flask_app.route('/')
+        def index():
+            return "🤖 Bot Académico UPSLP está funcionando correctamente!"
+        
+        @flask_app.route('/webhook', methods=['POST'])
+        def webhook():
+            """Endpoint para recibir updates de Telegram"""
+            try:
+                update = Update.de_json(request.get_json(), application.bot)
+                application.update_queue.put(update)
+                return 'ok'
+            except Exception as e:
+                print(f"Error en webhook: {e}")
+                return 'error', 400
+        
+        # Configurar webhook
+        webhook_url = f"https://{render_app_name}.onrender.com/webhook"
+        application.bot.set_webhook(webhook_url, drop_pending_updates=True)
+        
+        print(f"✅ Webhook configurado: {webhook_url}")
+        print("🔧 Iniciando servidor Flask...")
+        
+        # Iniciar servidor Flask
+        flask_app.run(host='0.0.0.0', port=port, debug=False)
+        
+    else:
+        print("🔧 Modo: Polling (Local)")
+        # Localmente usamos polling
+        application.run_polling(
+            drop_pending_updates=True,
+            allowed_updates=['message', 'callback_query']
+        )
 
 if __name__ == '__main__':
     main()
