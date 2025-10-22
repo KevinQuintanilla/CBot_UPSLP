@@ -753,7 +753,7 @@ def main():
     
     # Verificar si estamos en Render
     port = int(os.environ.get('PORT', 5000))
-    render_app_name = os.environ.get('RENDER_APP_NAME', 'CBot_LIPSLP')
+    render_app_name = os.environ.get('RENDER_APP_NAME', 'cbot-upslp')
     
     if render_app_name:
         print("🌐 Modo: Webhook (Render)")
