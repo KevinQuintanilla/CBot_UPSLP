@@ -740,7 +740,12 @@ def main():
     app.add_error_handler(error_handler)
     
     print("✅ Bot académico UPSLP iniciado correctamente!")
-    app.run_polling()
+    
+    # Configuración para Render - con manejo de conflicto
+    app.run_polling(
+        drop_pending_updates=True,
+        allowed_updates=['message', 'callback_query']
+    )
 
 if __name__ == '__main__':
     main()
